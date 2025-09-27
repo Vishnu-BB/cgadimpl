@@ -121,19 +121,43 @@ void vjp_SiLU(Node* n, const Tensor& gy){
     Tensor s = Tensor::sigmoid(X->value);
     X->grad.add_( rt( gy * ( s + X->value * ( s * (Tensor::ones_like(s)-s) ) ), X->value) );
 }
-void vjp_GELU(Node* n, const Tensor& gy){
-    Node* X = n->inputs[0].get(); if (!X->requires_grad) return;
+// void vjp_GELU(Node* n, const Tensor& gy){
+//     Node* X = n->inputs[0].get(); if (!X->requires_grad) return;
+//     constexpr float c = 0.79788456080286535588f; // sqrt(2/pi)
+//     int R=X->value.rows(), C=X->value.cols();
+//     Tensor x=X->value,u(R,C),dudx(R,C);
+//     for(int i=0;i<R;++i) for(int j=0;j<C;++j){
+//         float z=x(i,j);
+//         u(i,j)=c*(z+0.044715f*z*z*z);
+//         dudx(i,j)=c*(1.f+0.134145f*z*z);
+//     }
+//     Tensor th=Tensor::tanh(u), one=Tensor::ones_like(th);
+//     Tensor dgelu=(one+th)*0.5f + (x * ((one - th*th) * dudx))*0.5f;
+//     X->grad.add_( rt( gy * dgelu, X->value) );
+// }
+void vjp_GELU(Node* n, const Tensor& gy) {
+    Node* X = n->inputs[0].get();
+    if (!X->requires_grad) return;
+
     constexpr float c = 0.79788456080286535588f; // sqrt(2/pi)
-    int R=X->value.rows(), C=X->value.cols();
-    Tensor x=X->value,u(R,C),dudx(R,C);
-    for(int i=0;i<R;++i) for(int j=0;j<C;++j){
-        float z=x(i,j);
-        u(i,j)=c*(z+0.044715f*z*z*z);
-        dudx(i,j)=c*(1.f+0.134145f*z*z);
-    }
-    Tensor th=Tensor::tanh(u), one=Tensor::ones_like(th);
-    Tensor dgelu=(one+th)*0.5f + (x * ((one - th*th) * dudx))*0.5f;
-    X->grad.add_( rt( gy * dgelu, X->value) );
+
+    // Input tensor
+    const Tensor& x = X->value;
+
+    // Vectorized computation of u and dudx
+    Tensor x3   = x * x * x;                 // x^3
+    Tensor u    = (x + 0.044715f * x3) * c;  // c * (x + 0.044715 * x^3)
+    Tensor dudx = (Tensor::ones_like(x) + 0.134145f * (x * x)) * c;
+
+    // Vectorized tanh and derivatives
+    Tensor th   = Tensor::tanh(u);
+    Tensor one  = Tensor::ones_like(th);
+
+    // dGELU/dx = 0.5 * (1 + tanh(u)) + 0.5 * x * (1 - tanh(u)^2) * dudx
+    Tensor dgelu = ((one + th) * 0.5f) + ((x * ((one - th * th) * dudx)) * 0.5f);
+
+    // Accumulate gradient
+    X->grad.add_(rt(gy * dgelu, X->value));
 }
 void vjp_LeakyRelu(Node* n, const Tensor& gy){
     Node* X = n->inputs[0].get(); Node* A = n->inputs[1].get();
