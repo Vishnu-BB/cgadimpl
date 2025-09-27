@@ -50,7 +50,7 @@ Tensor(int rows, int cols);
             y.d[i] = (d[i] > threshold) ? 1.f : 0.f;
         return y;
     }
-    
+
 // factories
 static Tensor zeros(int r, int c);
 static Tensor ones (int r, int c);
@@ -138,6 +138,8 @@ static Tensor mean_all(const Tensor& X);
 // debug print
 friend std::ostream& operator<<(std::ostream& os, const Tensor& t);
 
+void clear();
+bool empty() const;
 
 private:
 int r{0}, c{0};

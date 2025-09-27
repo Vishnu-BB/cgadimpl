@@ -144,9 +144,9 @@ void vjp_GELU(Node* n, const Tensor& gy) {
     // Input tensor
     const Tensor& x = X->value;
 
-    // Vectorized computation of u and dudx
-    Tensor x3   = x * x * x;                 // x^3
-    Tensor u    = (x + 0.044715f * x3) * c;  // c * (x + 0.044715 * x^3)
+    // Vectorized computation of u and dudx (optimized: compute x^3 inline)
+    
+    Tensor u    = (x + 0.044715f * x * x * x) * c;  // c * (x + 0.044715 * x^3)
     Tensor dudx = (Tensor::ones_like(x) + 0.134145f * (x * x)) * c;
 
     // Vectorized tanh and derivatives

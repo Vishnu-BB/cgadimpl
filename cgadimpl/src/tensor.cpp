@@ -27,6 +27,16 @@ inline int pick(int i, int dim){ return dim==1 ? 0 : i; }
 Tensor::Tensor() = default;
 Tensor::Tensor(int rows, int cols) : r(rows), c(cols), d(static_cast<std::size_t>(rows)*cols, 0.f) {}
 
+void Tensor::clear() { 
+    d.clear(); 
+    r = 0; 
+    c = 0;
+    d.shrink_to_fit();
+}
+
+bool Tensor::empty() const { 
+    return d.empty();
+}
 
 Tensor Tensor::zeros(int r, int c){ return Tensor(r,c); }
 

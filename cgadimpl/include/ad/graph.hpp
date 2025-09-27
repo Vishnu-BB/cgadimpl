@@ -44,5 +44,6 @@ Value param (const Tensor& v, const char* name="param");
 // Topological order from root (parents before child)
 std::vector<Node*> topo_from(Node* root);
 
+void delete_subgraph(Node* root);
 
 } // namespace ag
