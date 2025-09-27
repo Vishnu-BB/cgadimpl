@@ -1,7 +1,16 @@
-rm -f *.o build/libag.a build/test_ag
-mkdir -p build
+mkdir -p build/obj
+g++ -O2 -std=gnu++17 -Iinclude -c src/tensor.cpp              -o build/obj/tensor.o
+g++ -O2 -std=gnu++17 -Iinclude -c src/schema.cpp              -o build/obj/schema.o
+g++ -O2 -std=gnu++17 -Iinclude -c src/graph.cpp               -o build/obj/graph.o
+g++ -O2 -std=gnu++17 -Iinclude -c src/ops.cpp                 -o build/obj/ops.o
+g++ -O2 -std=gnu++17 -Iinclude -c src/autodiff.cpp            -o build/obj/autodiff.o
+g++ -O2 -std=gnu++17 -Iinclude -c src/optim.cpp              -o build/obj/optim.o
+g++ -O2 -std=gnu++17 -Iinclude -c src/autodiff_vjp_ops.cpp    -o build/obj/autodiff_vjp_ops.o
+g++ -O2 -std=gnu++17 -Iinclude -c src/autodiff_jvp_ops.cpp    -o build/obj/autodiff_jvp_ops.o
+# (optional extras)
+g++ -O2 -std=gnu++17 -Iinclude -c src/debug.cpp               -o build/obj/debug.o
+g++ -O2 -std=gnu++17 -Iinclude -c src/export_hlo.cpp          -o build/obj/export_hlo.o
 
-g++ -O2 -std=gnu++17 -Iinclude -c src/tensor.cpp src/schema.cpp src/graph.cpp src/ops.cpp src/autodiff.cpp
-ar rcs build/libag.a tensor.o schema.o graph.o ops.o autodiff.o
-g++ -O2 -std=gnu++17 -Iinclude tests/test_ag.cpp build/libag.a -o build/test_ag
-./build/test_ag
+ar rcs build/libag.a build/obj/*.o
+g++ -O2 -std=gnu++17 -Iinclude tests/test_complex_mlp.cpp build/libag.a -o build/test_complex_mlp
+./build/test_complex_mlp

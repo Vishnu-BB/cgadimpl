@@ -17,7 +17,40 @@ public:
 Tensor();
 Tensor(int rows, int cols);
 
+    // --- New Array-style API ---
+    float* data() { return d.data(); }
+    const float* data() const { return d.data(); }
 
+    auto begin() { return d.begin(); }
+    auto end() { return d.end(); }
+    auto begin() const { return d.begin(); }
+    auto end() const { return d.end(); }
+
+    // elementwise transform: returns new Tensor
+    template <typename Func>
+    Tensor apply(Func f) const {
+        Tensor y(r, c);
+        for (size_t i = 0; i < d.size(); ++i) {
+            y.d[i] = f(d[i]);
+        }
+        return y;
+    }
+
+    // elementwise transform in-place
+    template <typename Func>
+    Tensor& apply_(Func f) {
+        for (auto& v : d) v = f(v);
+        return *this;
+    }
+
+    // elementwise comparison (returns mask 0/1)
+    Tensor greater_than(float threshold) const {
+        Tensor y(r, c);
+        for (size_t i = 0; i < d.size(); ++i)
+            y.d[i] = (d[i] > threshold) ? 1.f : 0.f;
+        return y;
+    }
+    
 // factories
 static Tensor zeros(int r, int c);
 static Tensor ones (int r, int c);

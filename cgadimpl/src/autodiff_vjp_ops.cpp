@@ -71,14 +71,15 @@ void vjp_Attention(Node* n, const Tensor& gy){
 
 
 // ----- unary activations -----
-void vjp_Relu(Node* n, const Tensor& gy){
+void vjp_Relu(Node* n, const Tensor& gy) {
     Node* X = n->inputs[0].get();
     if (!X->requires_grad) return;
-    int R=X->value.rows(), C=X->value.cols();
-    Tensor g(R,C);
-    for (int i=0;i<R;++i) for (int j=0;j<C;++j)
-        g(i,j) = (n->value(i,j) > 0.f) ? gy(i,j) : 0.f;
-    X->grad.add_( g );
+
+    // build mask in vectorized way
+    Tensor mask = n->value.greater_than(0.0f);
+    // multiply elementwise
+    Tensor g = gy * mask;
+    X->grad.add_(g);
 }
 void vjp_Exp(Node* n, const Tensor& gy){
     Node* X = n->inputs[0].get();
