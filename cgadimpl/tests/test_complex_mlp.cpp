@@ -114,6 +114,9 @@
 //     // print_value("Y (one-hot)", Y);
 //     // print_value("loss", loss);
 
+//     ag::checkpoint_register(L2.node.get());  // keep activations for L2
+//     ag::checkpoint_register(L4.node.get()); 
+
 //     // ---------- Backprop ----------
 //     zero_grad(loss);
 //     backward(loss);
@@ -122,7 +125,11 @@
 //     // ag::debug::dump_dot(loss, "build/graph.dot");       // write GraphViz DOT
 //     // ag::debug::dump_vjp_dot(loss, "build/graph_vjp.dot"); // write VJP DOT
 //     // ag::debug::dump_jvp_dot(loss, "build/graph_jvp.dot"); // write JVP DOT
+//     ag::delete_subgraph_preserve_checkpoints(loss.node.get());
 
+// // Later, when you're done with checkpoints:
+//     ag::checkpoint_unregister(L2.node.get());
+//     ag::checkpoint_unregister(L4.node.get());
 
 
 //     // ---------- Report ----------
@@ -180,46 +187,90 @@
 //     return 0;
 // }
 
+// #include <iostream>
+// #include "ad/ag_all.hpp"
+
+// using namespace ag;
+
+// int main() {
+//     // Build a tiny graph: (x * W + b)
+//     Value x  = constant(Tensor::randn(2,2,123), "x");
+//     Value W  = param(Tensor::randn(2,2,321), "W");
+//     Value b  = param(Tensor::zeros(1,2), "b");
+
+//     Value y = matmul(x, W) + b;   // y depends on x, W, b
+
+//     // Print ownership counts BEFORE deletion
+//     std::cout << "=== BEFORE delete_subgraph ===\n";
+//     std::cout << "y.node.use_count() = " << y.node.use_count() << "\n";
+//     for (size_t i=0; i<y.node->inputs.size(); ++i) {
+//         auto& inp = y.node->inputs[i];
+//         std::cout << " input["<<i<<"] use_count=" << inp.use_count()
+//                   << " (null? " << std::boolalpha << !inp << ")\n";
+//     }
+
+//     // Call deletion
+//     delete_subgraph(y.node.get());
+
+//     // Print ownership counts AFTER deletion
+//     std::cout << "\n=== AFTER delete_subgraph ===\n";
+//     std::cout << "y.node.use_count() = " << y.node.use_count() << "\n";
+//     if (y.node->inputs.empty()) {
+//         std::cout << "y.node->inputs is EMPTY\n";
+//     } else {
+//         for (size_t i=0; i<y.node->inputs.size(); ++i) {
+//             auto& inp = y.node->inputs[i];
+//             std::cout << " input["<<i<<"] use_count=" << inp.use_count()
+//                       << " (null? " << std::boolalpha << !inp << ")\n";
+//         }
+//     }
+
+//     // Proof: at this point, intermediate ops should be freed.
+//     // Only x, W, b (Leaf nodes) remain alive because we hold Value handles.
+
+//     return 0;
+// }
 #include <iostream>
 #include "ad/ag_all.hpp"
-
 using namespace ag;
 
 int main() {
-    // Build a tiny graph: (x * W + b)
     Value x  = constant(Tensor::randn(2,2,123), "x");
     Value W  = param(Tensor::randn(2,2,321), "W");
     Value b  = param(Tensor::zeros(1,2), "b");
 
-    Value y = matmul(x, W) + b;   // y depends on x, W, b
+    Value y = matmul(x, W) + b;   // y depends on matmul node and add node etc.
 
-    // Print ownership counts BEFORE deletion
-    std::cout << "=== BEFORE delete_subgraph ===\n";
-    std::cout << "y.node.use_count() = " << y.node.use_count() << "\n";
-    for (size_t i=0; i<y.node->inputs.size(); ++i) {
-        auto& inp = y.node->inputs[i];
-        std::cout << " input["<<i<<"] use_count=" << inp.use_count()
-                  << " (null? " << std::boolalpha << !inp << ")\n";
+    // register matmul output as checkpoint (example: keep matmul activation)
+    // find the node you'd like to keep. Suppose y.node->inputs[0] is matmul node,
+    // but better to capture it at creation time: e.g. auto M = matmul(x,W); Value y = M + b;
+    // For this snippet, assume M exists as a Value.
+    // For demo, we will checkpoint the immediate inputs of y if they exist.
+    if (!y.node->inputs.empty()) {
+        ag::checkpoint_register(y.node->inputs[0].get()); // checkpoint child[0]
     }
 
-    // Call deletion
-    delete_subgraph(y.node.get());
+    std::cout << "Before deletion:\n";
+    std::cout << " y.node->inputs.size() = " << y.node->inputs.size() << "\n";
+    for (size_t i=0;i<y.node->inputs.size();++i) {
+        auto &p = y.node->inputs[i];
+        std::cout << "  input["<<i<<"].use_count="<< (p? p.use_count() : 0) << "\n";
+    }
 
-    // Print ownership counts AFTER deletion
-    std::cout << "\n=== AFTER delete_subgraph ===\n";
-    std::cout << "y.node.use_count() = " << y.node.use_count() << "\n";
+    ag::delete_subgraph_preserve_checkpoints(y.node.get());
+
+    std::cout << "After delete_subgraph_preserve_checkpoints:\n";
     if (y.node->inputs.empty()) {
-        std::cout << "y.node->inputs is EMPTY\n";
+        std::cout << " y.node->inputs is empty\n";
     } else {
-        for (size_t i=0; i<y.node->inputs.size(); ++i) {
-            auto& inp = y.node->inputs[i];
-            std::cout << " input["<<i<<"] use_count=" << inp.use_count()
-                      << " (null? " << std::boolalpha << !inp << ")\n";
+        for (size_t i=0;i<y.node->inputs.size();++i) {
+            auto &p = y.node->inputs[i];
+            std::cout << "  input["<<i<<"].use_count="<< (p? p.use_count() : 0) 
+                      << " (null? "<< std::boolalpha << !p << ")\n";
         }
     }
 
-    // Proof: at this point, intermediate ops should be freed.
-    // Only x, W, b (Leaf nodes) remain alive because we hold Value handles.
-
+    // cleanup registry
+    ag::checkpoint_clear_all();
     return 0;
 }

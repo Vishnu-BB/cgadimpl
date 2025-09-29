@@ -3,6 +3,7 @@
 // =====================
 #include <unordered_set>
 #include <functional>
+#include <mutex>
 #include "ad/graph.hpp"
 
 
@@ -102,6 +103,94 @@ void delete_subgraph(Node* root) {
             }
         }
         // Clear inputs vector to free capacity and make future calls safe.
+        std::vector<std::shared_ptr<Node>> empty;
+        n->inputs.swap(empty);
+    }
+}
+
+/////////// Checkpointing utilities ////////////
+namespace {
+    static std::unordered_set<Node*> g_checkpoints;
+    static std::mutex g_checkpoint_mutex;
+}
+
+void checkpoint_register(Node* node) {
+    if (!node) return;
+    std::lock_guard<std::mutex> lk(g_checkpoint_mutex);
+    g_checkpoints.insert(node);
+}
+void checkpoint_unregister(Node* node) {
+    if (!node) return;
+    std::lock_guard<std::mutex> lk(g_checkpoint_mutex);
+    g_checkpoints.erase(node);
+}
+bool checkpoint_is_registered(Node* node) {
+    if(!node) return false;
+    // std::lock_guard<std::mutex> lk(g_checkpoint_mutex);
+    return g_checkpoints.count(node) > 0;
+}
+void checkpoint_clear_all() {
+    std::lock_guard<std::mutex> lk(g_checkpoint_mutex);
+    g_checkpoints.clear();
+}
+
+void delete_subgraph_preserve_checkpoints(Node* root) {
+    if (!root) return;
+
+    // Collect reachable nodes
+    std::unordered_set<Node*> visited;
+    visited.reserve(256);
+    std::function<void(Node*)> dfs = [&](Node* n) {
+        if (!n || visited.count(n)) return;
+        visited.insert(n);
+        for (auto& inp_sp : n->inputs) {
+            if (inp_sp) {
+                Node* child = inp_sp.get();
+                if (child && !visited.count(child)) dfs(child);
+            }
+        }
+    };
+    dfs(root);
+
+    if (visited.empty()) return;
+
+    // Now, process nodes. For checkpointed nodes we do not clear their inputs.
+    // For non-checkpoint nodes, we reset inputs, except when the input itself is
+    // a checkpointed node (then we keep that shared_ptr so checkpoint remains).
+    for (Node* n : visited) {
+        if (!n) continue;
+
+        // If this node itself is checkpointed, skip clearing/resetting its inputs entirely.
+        bool is_ckpt = g_checkpoints.count(n) > 0;
+        {
+            std::lock_guard<std::mutex> lk(g_checkpoint_mutex);
+            if (g_checkpoints.count(n)) is_ckpt = true;
+        }
+        if (is_ckpt) {
+            // Preserve inputs of the checkpointed node.
+            continue;
+        }
+
+        // For non-checkpoint nodes: reset each input pointer unless the child is checkpointed.
+        for (auto& inp_sp : n->inputs) {
+            if (!inp_sp) continue;
+            Node* child = inp_sp.get();
+            if (!child) { inp_sp.reset(); continue; }
+            bool child_is_ckpt = g_checkpoints.count(child) > 0;
+            {
+                std::lock_guard<std::mutex> lk(g_checkpoint_mutex);
+                if (g_checkpoints.count(child)) child_is_ckpt = true;
+            }
+            if (child_is_ckpt) {
+                // preserve reference to checkpoint child (do not reset)
+                continue;
+            } else {
+                try {
+                    inp_sp.reset(); // drop reference to non-checkpoint child
+                } catch (...) { }
+            }
+        }
+        // Clear the vector itself for this node (we no longer need the vector)
         std::vector<std::shared_ptr<Node>> empty;
         n->inputs.swap(empty);
     }

@@ -46,4 +46,11 @@ std::vector<Node*> topo_from(Node* root);
 
 void delete_subgraph(Node* root);
 
+void checkpoint_register(Node* node);
+void checkpoint_unregister(Node* node);
+bool checkpoint_is_registered(Node* node);
+void checkpoint_clear_all();
+
+void delete_subgraph_preserve_checkpoints(Node* root);
+
 } // namespace ag
