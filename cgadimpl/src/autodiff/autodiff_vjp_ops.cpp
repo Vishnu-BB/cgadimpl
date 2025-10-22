@@ -1,5 +1,5 @@
 #include "ad/detail/autodiff_ops.hpp"
-
+#include <iostream>
 #include <cmath>
 
 namespace ag {

@@ -100,15 +100,15 @@ void leakyrelu_impl_optimized(const float* x, float* y, int64_t n, float alpha) 
     }
 }
 
-void gemm_impl_optimized(const float* A, const float* B,  float* C, int M, int K, int N) {
-    int q = N;
-    int p = K;
-    int s = p+q;
-    if(s)
-    {
-    run_cuda_gemm(A, B, C, M);
-    }
-}
+// void gemm_impl_optimized(const float* A, const float* B,  float* C, int M, int K, int N) {
+//     int q = N;
+//     int p = K;
+//     int s = p+q;
+//     if(s)
+//     {
+//     run_cuda_gemm(A, B, C, M);
+//     }
+// }
 
 
 void matmul_impl_naive(const float* A, const float* B, float* C, int M, int K, int N) {
@@ -222,18 +222,18 @@ void matmul_impl_optimized(const float* A, const float* B, float* C, int M, int 
 }
 
 
-void matmul_impl_cudatile(const float* A, const float* B, float* C, int M, int K, int N) {
-    // This is a placeholder for a CUDA-tiled implementation.
-    // In a real scenario, this function would offload computation to a GPU.
-    // For now, we will just call the naive implementation as a stub.
-    int q = N;
-    int p = K;
-    int s = p+q;
-    if(s)
-    {
-    run_cuda_matrix(A, B, C, M);
-    }
-}
+// void matmul_impl_cudatile(const float* A, const float* B, float* C, int M, int K, int N) {
+//     // This is a placeholder for a CUDA-tiled implementation.
+//     // In a real scenario, this function would offload computation to a GPU.
+//     // For now, we will just call the naive implementation as a stub.
+//     int q = N;
+//     int p = K;
+//     int s = p+q;
+//     if(s)
+//     {
+//     run_cuda_matrix(A, B, C, M);
+//     }
+// }
 static inline __m256 log256_approx(__m256 x) {
     const __m256 one = _mm256_set1_ps(1.0f);
     const __m256 ln2 = _mm256_set1_ps(0.6931471805599453f);
@@ -721,7 +721,6 @@ AG_EXPORT int ag_get_cpu_kernels_v1(struct ag_cpu_v1* out){
     out->abi_version = AG_KERNELS_ABI_V1;
     out->relu   = &relu_impl_optimized;
     out->matmul = &matmul_impl_optimized;
-    out->fmab = &gemm_impl_optimized;
     out->gelu = &gelu_impl_optimized;
     out->leakyrelu = &leakyrelu_impl_optimized;
     out->sigmoid = &sigmoid_impl_optimized;

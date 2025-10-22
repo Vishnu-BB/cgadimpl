@@ -256,11 +256,33 @@ Tensor forward_eval_node(const std::shared_ptr<Node> &node) {
         // ============================================================
         // Basic arithmetic operations
         // ============================================================
+        // case Op::Add: {
+        //     const Tensor &A = node->inputs[0]->value;
+        //     const Tensor &B = node->inputs[1]->value;
+        //     return A + B; // elementwise addition
+        // }
         case Op::Add: {
             const Tensor &A = node->inputs[0]->value;
             const Tensor &B = node->inputs[1]->value;
-            return A + B; // elementwise addition
+
+            if (A.rows() == 0 || B.rows() == 0 || A.cols() == 0 || B.cols() == 0) {
+                std::cerr << "\n[DEBUG] Shape mismatch detected in Add op!\n";
+                std::cerr << "Node@" << node.get() << " name=\"" 
+                        << (node->debug_name ? node->debug_name : "(null)") << "\"\n";
+                std::cerr << "  Input0 shape: " << A.rows() << "x" << A.cols()
+                        << " ptr=" << A.data() << "\n";
+                std::cerr << "  Input1 shape: " << B.rows() << "x" << B.cols()
+                        << " ptr=" << B.data() << "\n";
+                std::cerr << "  Input0 node@" << node->inputs[0].get()
+                        << " checkpoint=" << node->inputs[0]->is_checkpoint << "\n";
+                std::cerr << "  Input1 node@" << node->inputs[1].get()
+                        << " checkpoint=" << node->inputs[1]->is_checkpoint << "\n";
+                throw std::runtime_error("add_: shape mismatch");
+            }
+
+            return A + B;
         }
+
         case Op::Sub: {
             const Tensor &A = node->inputs[0]->value;
             const Tensor &B = node->inputs[1]->value;
@@ -303,6 +325,10 @@ Tensor forward_eval_node(const std::shared_ptr<Node> &node) {
         case Op::Log: {
             const Tensor &X = node->inputs[0]->value;
             return Tensor::log(X);
+        }
+        case Op::Sum: {
+            const Tensor &X = node->inputs[0]->value;
+            return Tensor::sum_all(X);
         }
 
         // ============================================================

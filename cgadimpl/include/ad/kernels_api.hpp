@@ -20,8 +20,6 @@ static const uint32_t AG_KERNELS_ABI_V1 = 1;
 typedef void (*ag_relu_fn)(const float* x, float* y, int64_t n);
 typedef void (*ag_matmul_fn)(const float* A, const float* B, float* C,
                              int M, int K, int N);
-typedef void (*ag_gemm_fn)(const float* A, const float* B, float* C,
-                             int M, int K, int N);
 typedef void (*ag_gelu_fn)(const float* x, float* y, int64_t n);
 typedef void (*ag_leakyrelu_fn)(const float* x, float* y, int64_t n, float alpha);
 typedef void (*ag_sigmoid_fn)(const float* x, float* y, int64_t n);
@@ -58,7 +56,6 @@ struct ag_cpu_v1 {
   uint32_t abi_version;   // must be AG_KERNELS_ABI_V1
   ag_relu_fn   relu;
   ag_matmul_fn matmul;
-  ag_gemm_fn fmab;
   ag_gelu_fn gelu;
   ag_leakyrelu_fn leakyrelu;
   ag_sigmoid_fn sigmoid;
@@ -98,7 +95,6 @@ namespace ag::kernels {
 struct Cpu {
   ag_relu_fn   relu   = nullptr;
   ag_matmul_fn matmul = nullptr;
-  ag_gemm_fn fmab = nullptr;
   ag_gelu_fn gelu = nullptr;
   ag_leakyrelu_fn leakyrelu = nullptr;
   ag_sigmoid_fn sigmoid = nullptr;

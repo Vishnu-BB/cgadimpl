@@ -22,6 +22,9 @@ bool requires_grad{false};
 bool is_checkpoint{false};
 
 std::vector<Value> saved_inputs;
+// new: snapshots of parent tensors needed for recompute
+std::vector<Tensor> saved_input_tensors;
+
 std::vector<uint8_t> saved_rng_blob;
 
 bool has_saved_rng{false};
