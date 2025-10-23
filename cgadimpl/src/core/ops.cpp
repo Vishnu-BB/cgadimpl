@@ -1,5 +1,5 @@
 // =====================
-// file: src/ops.cpp
+// file: cgadimpl/src/ops.cpp
 // =====================
 #include "ad/ops.hpp"
 #include "ad/nodeops.hpp" // Include the new node-level declarations
@@ -336,11 +336,6 @@ Tensor forward_eval_node(const std::shared_ptr<Node> &node) {
         // ============================================================
         // Basic arithmetic operations
         // ============================================================
-        // case Op::Add: {
-        //     const Tensor &A = node->inputs[0]->value;
-        //     const Tensor &B = node->inputs[1]->value;
-        //     return A + B; // elementwise addition
-        // }
         case Op::Add: {
             const Tensor &A = node->inputs[0]->value;
             const Tensor &B = node->inputs[1]->value;
@@ -405,10 +400,6 @@ Tensor forward_eval_node(const std::shared_ptr<Node> &node) {
         case Op::Log: {
             const Tensor &X = node->inputs[0]->value;
             return Tensor::log(X);
-        }
-        case Op::Sum: {
-            const Tensor &X = node->inputs[0]->value;
-            return Tensor::sum_all(X);
         }
 
         // ============================================================

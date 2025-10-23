@@ -1,3 +1,7 @@
+# ====================
+# ztools/run.sh
+# ====================
+
 #!/usr/bin/env bash
 # Build cgadimpl (core) in ./cgadimpl and the kernels/cpu plugin in ./kernels.
 # Usage:
@@ -73,6 +77,7 @@ cmake -S "$CORE_SRC" -B "$CORE_BUILD" \
 
 # Locate plugin
 PLUGIN_CANDIDATES=(
+
   "$KERNELS_BUILD/cpu/libagkernels_cpu.${SO_SUFFIX}"
   "$KERNELS_BUILD/cpu/agkernels_cpu.${SO_SUFFIX}"
   "$KERNELS_BUILD/libagkernels_cpu.${SO_SUFFIX}"
@@ -88,6 +93,26 @@ done
 STAGED_PLUGIN="$CORE_BUILD/$(basename "$PLUGIN_PATH")"
 cp -f "$PLUGIN_PATH" "$STAGED_PLUGIN"
 
+# Stage CUDA plugin if present
+CUDA_CANDIDATES=(
+  "$KERNELS_BUILD/gpu/libagkernels_cuda.${SO_SUFFIX}"
+  "$KERNELS_BUILD/gpu/${BUILD_TYPE}/libagkernels_cuda.${SO_SUFFIX}"
+  "$KERNELS_BUILD/gpu/agkernels_cuda.${SO_SUFFIX}"
+  "$KERNELS_BUILD/libagkernels_cuda.${SO_SUFFIX}"
+)
+
+
+CUDA_PLUGIN=""
+for p in "${CUDA_CANDIDATES[@]}"; do
+  if [[ -f "$p" ]]; then CUDA_PLUGIN="$p"; break; fi
+done
+
+if [[ -n "$CUDA_PLUGIN" ]]; then
+  cp -f "$CUDA_PLUGIN" "$CORE_BUILD/"
+  echo "Staged CUDA plugin: $CORE_BUILD/$(basename "$CUDA_PLUGIN")"
+else
+  echo "CUDA plugin not found — skipping stage (CPU-only ok)."
+fi
 cat <<EOF
 
 Build complete.

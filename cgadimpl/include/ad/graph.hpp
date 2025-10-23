@@ -1,5 +1,5 @@
 // =====================
-// file: include/ag/graph.hpp (declarations only)
+// file: cgadimpl/include/ag/graph.hpp (declarations only)
 // =====================
 #pragma once
 #include <memory>
@@ -47,7 +47,10 @@ Tensor& grad();
 std::pair<int,int> shape() const;
 };
 
+// new factory function
+Value make_tensor(const Tensor& v, const char* name = "", bool requires_grad = false);
 
+//old factories
 Value constant(const Tensor& v, const char* name="const");
 Value param (const Tensor& v, const char* name="param");
 
