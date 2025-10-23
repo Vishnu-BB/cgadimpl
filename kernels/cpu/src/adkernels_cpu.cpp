@@ -1,6 +1,5 @@
 // cgadimpl/kernels/cpu/src/adkernels_cpu.cpp
 #include "ad/kernels_api.hpp"
-#include "matker.cuh"
 #include <immintrin.h>
 #include <omp.h>
 #include <cstdint>
@@ -250,19 +249,19 @@ void matmul_bwd_dA_impl_optimized(const float* dC, const float* B, float* dA, in
     // To compute dA: A=dC (M,N), B=B (N,K) -> result (M,K)
     extern void gemm_impl_optimized(const float* A, const float* B, const float* C_in_unused, float* Out, int M_in, int K_in, int N_in);
     // call: A=dC, B = <B transposed?>  if gemm expects B as (K,N) -> adjust
-    // simplest: implement a small routine that computes dA with existing matmul_impl_cudatile if that supports any shape.
-    // Here we assume we can call matmul_impl_cudatile(dC, B, dA, M, N, K) where B is accessed as (N,K).
-    extern void matmul_impl_cudatile(const float* A, const float* B, float* C, int M, int K, int N);
-    matmul_impl_cudatile(dC, B, dA, M, N, K);
+    // simplest: implement a small routine that computes dA with existing matmul_impl_optimized if that supports any shape.
+    // Here we assume we can call matmul_impl_optimized(dC, B, dA, M, N, K) where B is accessed as (N,K).
+    extern void matmul_impl_optimized(const float* A, const float* B, float* C, int M, int K, int N);
+    matmul_impl_optimized(dC, B, dA, M, N, K);
 }
 
 // Compute dB = A^T @ dC
 // A: [M,K], dC: [M,N] -> A^T: [K,M] @ [M,N] = [K,N]
 void matmul_bwd_dB_impl_optimized(const float* A, const float* dC, float* dB, int M, int K, int N) {
     // dB = A^T @ dC -> (K,M) @ (M,N) -> (K,N)
-    extern void matmul_impl_cudatile(const float* A, const float* B, float* C, int M, int K, int N);
-    // pass A^T by pointing to A with interpreter that matmul_impl_cudatile expects A as (M,K). Many libraries require explicit transpose.
-    // If matmul_impl_cudatile cannot accept transposed inputs, you can compute dB in blocks or implement a transposed GEMM wrapper.
+    extern void matmul_impl_optimized(const float* A, const float* B, float* C, int M, int K, int N);
+    // pass A^T by pointing to A with interpreter that matmul_impl_optimized expects A as (M,K). Many libraries require explicit transpose.
+    // If matmul_impl_optimized cannot accept transposed inputs, you can compute dB in blocks or implement a transposed GEMM wrapper.
     // Here we'll do a simple approach: loop over k and n computing dot-products (works but slower). Ideally call transpose-capable gemm.
     #pragma omp parallel for collapse(2)
     for (int k = 0; k < K; ++k) {
