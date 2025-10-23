@@ -220,7 +220,7 @@
 //     void relu_impl_optimized(const float* x, float* y, int64_t n);
 //     void leakyrelu_impl_optimized(const float* x, float* y, int64_t n, float alpha);
 //     void gelu_impl_optimized(const float* x, float* y, int64_t n);
-//     void matmul_impl_cudatile(const float* A, const float* B, float* C, int M, int K, int N);
+//     void matmul_impl_optimized(const float* A, const float* B, float* C, int M, int K, int N);
 //     void gemm_impl_optimized(const float* A, const float* B, const float* C, float* Out,
 //                              int M, int K, int N);
 // }
@@ -325,7 +325,7 @@
 //         fill_random(A);
 //         fill_random(B);
 
-//         double t_our = benchmark([&]() { matmul_impl_cudatile(A.data(), B.data(), C.data(), M, K, P); }, 10);
+//         double t_our = benchmark([&]() { matmul_impl_optimized(A.data(), B.data(), C.data(), M, K, P); }, 10);
 //         std::cout << "Our optimized MatMul avg time: " << t_our << " ms\n";
 
 //         Eigen::Map<Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>> 

@@ -102,7 +102,8 @@ void auto_checkpoint_by_depth(const Value& root, int depth_threshold);
  *  These are used internally by the autograd system and `backward()`.
  */
 namespace checkpoint_impl {
-
+void capture_checkpoint_snapshots(const ag::Value &root);
+void compute_forward_values(const ag::Value &root);
 /*
  *  mark_node_checkpoint():
  *  ------------------------
@@ -144,7 +145,7 @@ bool recompute_subgraph(const std::shared_ptr<Node>& node);
  *  Returns true if node exists and node->is_checkpoint == true.
  */
 inline bool is_checkpointed(const std::shared_ptr<Node> &node);
-
+void evict_non_checkpoint_values(const Value &root);
 } // namespace checkpoint_impl
 
 } // namespace ag

@@ -81,7 +81,7 @@ Tensor& Tensor::add_(const Tensor& g) {
         d.resize(static_cast<std::size_t>(r) * c, 0.f);
     }
 
-    if (r != g.r || c != g.c)
+    if (r != g.rows() || c != g.cols())
         throw std::runtime_error("add_: shape mismatch");
 
     for (std::size_t i = 0; i < d.size(); ++i)
