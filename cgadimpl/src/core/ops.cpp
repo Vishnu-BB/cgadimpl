@@ -5,6 +5,11 @@
 #include "ad/nodeops.hpp" // Include the new node-level declarations
 #include "ad/inplace.hpp"
 
+#include <sstream>
+#include <iostream>
+#include <cmath>
+#include <algorithm>
+
 namespace ag {
 
     Value add(const Value& a, const Value& b){ 
@@ -247,65 +252,173 @@ return Value(detail::realrms_nodeops(x.node, g));
  *      5️⃣  Return the computed output tensor.
  *      6️⃣  If unsupported, throw a runtime error.
  */
+// Tensor forward_eval_node(const std::shared_ptr<Node> &node) {
+//     if (!node)
+//         throw std::runtime_error("forward_eval_node: null node");
+
+//     switch (node->op) {
+
+
+//         case Op::Add: {
+//             const Tensor &A = node->inputs[0]->value;
+//             const Tensor &B = node->inputs[1]->value;
+
+//             if (A.rows() == 0 || B.rows() == 0 || A.cols() == 0 || B.cols() == 0) {
+//                 std::cerr << "\n[DEBUG] Shape mismatch detected in Add op!\n";
+//                 std::cerr << "Node@" << node.get() << " name=\"" 
+//                         << (node->debug_name ? node->debug_name : "(null)") << "\"\n";
+//                 std::cerr << "  Input0 shape: " << A.rows() << "x" << A.cols()
+//                         << " ptr=" << A.data() << "\n";
+//                 std::cerr << "  Input1 shape: " << B.rows() << "x" << B.cols()
+//                         << " ptr=" << B.data() << "\n";
+//                 std::cerr << "  Input0 node@" << node->inputs[0].get()
+//                         << " checkpoint=" << node->inputs[0]->is_checkpoint << "\n";
+//                 std::cerr << "  Input1 node@" << node->inputs[1].get()
+//                         << " checkpoint=" << node->inputs[1]->is_checkpoint << "\n";
+//                 throw std::runtime_error("add_: shape mismatch");
+//             }
+
+//             return A + B;
+//         }
+
+//         case Op::Sub: {
+//             const Tensor &A = node->inputs[0]->value;
+//             const Tensor &B = node->inputs[1]->value;
+//             return A - B; // elementwise subtraction
+//         }
+//         case Op::Mul: {
+//             const Tensor &A = node->inputs[0]->value;
+//             const Tensor &B = node->inputs[1]->value;
+//             return A * B; // elementwise multiplication
+//         }
+
+//         case Op::MatMul: {
+//             const Tensor &A = node->inputs[0]->value;
+//             const Tensor &B = node->inputs[1]->value;
+//             return Tensor::matmul(A, B);
+//         }
+
+//         // ============================================================
+//         // Unary elementwise activations
+//         // ============================================================
+//         case Op::Relu: {
+//             const Tensor &X = node->inputs[0]->value;
+//             return Tensor::relu(X);
+//         }
+//         case Op::Sigmoid: {
+//             const Tensor &X = node->inputs[0]->value;
+//             return Tensor::sigmoid(X);
+//         }
+//         case Op::Tanh: {
+//             const Tensor &X = node->inputs[0]->value;
+//             return Tensor::tanh(X);
+//         }
+//         case Op::Exp: {
+//             const Tensor &X = node->inputs[0]->value;
+//             return Tensor::exp(X);
+//         }
+//         case Op::Log: {
+//             const Tensor &X = node->inputs[0]->value;
+//             return Tensor::log(X);
+//         }
+//         case Op::Sum: {
+//             const Tensor &X = node->inputs[0]->value;
+//             return Tensor::sum_all(X);
+//         }
+
+//         case Op::AlibiAttention: {
+//             const Tensor &a = node->inputs[0]->value;
+//             const Tensor &b = node->inputs[1]->value;
+//             const Tensor &c = node->inputs[2]->value;
+//             const Tensor &d = node->inputs[3]->value;
+
+//             // Step 1: compute projections
+//             Tensor q = Tensor::matmul(a, b);
+//             Tensor k = Tensor::matmul(a, c);
+//             Tensor v = Tensor::matmul(a, d);
+
+//             // Step 2: scaled dot-product attention
+//             Tensor logits = Tensor::matmul(q, Tensor::transpose(k) * (1.f / sqrt(float(k.cols()))));
+
+//             // Step 3: add ALIBI bias (creates a position-dependent attention slope)
+//             Tensor bias = Tensor::alibi(logits.rows(), logits.cols(), /*m*/128);
+//             Tensor g = logits + bias;
+
+//             // Step 4: softmax normalization over rows
+//             Tensor s = Tensor::softmax_row(g);
+
+//             // Step 5: output = attention weights × values
+//             Tensor y = Tensor::matmul(s, v);
+//             return y;
+//         }
+
+//                 case Op::Leaf:
+//             return node->value;
+
+//                default:
+//             if (!node->tape.empty()) {
+//                 return *(node->tape.back());
+//             }
+//             throw std::runtime_error("forward_eval_node: unsupported op for recompute");
+//     }
+// }
+
+
+// Tensor forward_eval_node(Node* node) {
+//     // Non-owning shared_ptr wrapper — prevents deletion of node
+//     return forward_eval_node(std::shared_ptr<Node>(node, [](Node*){}));
+// }
+
+// Robust forward evaluator for a single node (recompute-friendly)
 Tensor forward_eval_node(const std::shared_ptr<Node> &node) {
-    if (!node)
-        throw std::runtime_error("forward_eval_node: null node");
+    if (!node) throw std::runtime_error("forward_eval_node: null node");
 
-    switch (node->op) {
+    auto dbg_name = node->debug_name ? node->debug_name : "(null)";
+    try {
+        switch (node->op) {
 
-        // ============================================================
-        // Basic arithmetic operations
-        // ============================================================
-        // case Op::Add: {
-        //     const Tensor &A = node->inputs[0]->value;
-        //     const Tensor &B = node->inputs[1]->value;
-        //     return A + B; // elementwise addition
-        // }
+        case Op::Leaf:
+            // Leaf nodes simply hold their value
+            return node->value;
+
         case Op::Add: {
             const Tensor &A = node->inputs[0]->value;
             const Tensor &B = node->inputs[1]->value;
-
-            if (A.rows() == 0 || B.rows() == 0 || A.cols() == 0 || B.cols() == 0) {
-                std::cerr << "\n[DEBUG] Shape mismatch detected in Add op!\n";
-                std::cerr << "Node@" << node.get() << " name=\"" 
-                        << (node->debug_name ? node->debug_name : "(null)") << "\"\n";
-                std::cerr << "  Input0 shape: " << A.rows() << "x" << A.cols()
-                        << " ptr=" << A.data() << "\n";
-                std::cerr << "  Input1 shape: " << B.rows() << "x" << B.cols()
-                        << " ptr=" << B.data() << "\n";
-                std::cerr << "  Input0 node@" << node->inputs[0].get()
-                        << " checkpoint=" << node->inputs[0]->is_checkpoint << "\n";
-                std::cerr << "  Input1 node@" << node->inputs[1].get()
-                        << " checkpoint=" << node->inputs[1]->is_checkpoint << "\n";
-                throw std::runtime_error("add_: shape mismatch");
+            if (A.size() == 0 || B.size() == 0) {
+                std::ostringstream ss;
+                ss << "[forward_eval_node::Add] empty input for node@" << node.get()
+                   << " name=\"" << dbg_name << "\" A.size=" << A.size() << " B.size=" << B.size();
+                throw std::runtime_error(ss.str());
             }
-
             return A + B;
         }
 
         case Op::Sub: {
             const Tensor &A = node->inputs[0]->value;
             const Tensor &B = node->inputs[1]->value;
-            return A - B; // elementwise subtraction
+            return A - B;
         }
+
         case Op::Mul: {
             const Tensor &A = node->inputs[0]->value;
             const Tensor &B = node->inputs[1]->value;
-            return A * B; // elementwise multiplication
+            return A * B;
         }
 
-        // ============================================================
-        // Matrix multiplication (dense layer or attention block)
-        // ============================================================
         case Op::MatMul: {
             const Tensor &A = node->inputs[0]->value;
             const Tensor &B = node->inputs[1]->value;
+            if (A.cols() != B.rows()) {
+                std::ostringstream ss;
+                ss << "matmul: inner dim mismatch for node@" << node.get()
+                   << " name=\"" << dbg_name << "\" A=" << A.rows() << "x" << A.cols()
+                   << " B=" << B.rows() << "x" << B.cols();
+                throw std::runtime_error(ss.str());
+            }
             return Tensor::matmul(A, B);
         }
 
-        // ============================================================
-        // Unary elementwise activations
-        // ============================================================
+        // Elementwise unary ops
         case Op::Relu: {
             const Tensor &X = node->inputs[0]->value;
             return Tensor::relu(X);
@@ -326,105 +439,128 @@ Tensor forward_eval_node(const std::shared_ptr<Node> &node) {
             const Tensor &X = node->inputs[0]->value;
             return Tensor::log(X);
         }
+
         case Op::Sum: {
             const Tensor &X = node->inputs[0]->value;
             return Tensor::sum_all(X);
         }
 
-        // ============================================================
-        // Complex operation: AlibiAttention
-        // ============================================================
-        /*
-         * AlibiAttention:
-         * ---------------
-         * This is a specialized attention mechanism variant that adds
-         * a learned or deterministic bias (ALIBI) to the attention logits.
-         *
-         * Steps:
-         *    1. Compute queries (q), keys (k), and values (v) via matmul.
-         *    2. Compute scaled dot-product attention scores.
-         *    3. Apply ALIBI positional bias.
-         *    4. Compute softmax over the attention weights.
-         *    5. Multiply attention weights with the values to get the output.
-         */
-        case Op::AlibiAttention: {
-            const Tensor &a = node->inputs[0]->value;
-            const Tensor &b = node->inputs[1]->value;
-            const Tensor &c = node->inputs[2]->value;
-            const Tensor &d = node->inputs[3]->value;
-
-            // Step 1: compute projections
-            Tensor q = Tensor::matmul(a, b);
-            Tensor k = Tensor::matmul(a, c);
-            Tensor v = Tensor::matmul(a, d);
-
-            // Step 2: scaled dot-product attention
-            Tensor logits = Tensor::matmul(q, Tensor::transpose(k) * (1.f / sqrt(float(k.cols()))));
-
-            // Step 3: add ALIBI bias (creates a position-dependent attention slope)
-            Tensor bias = Tensor::alibi(logits.rows(), logits.cols(), /*m*/128);
-            Tensor g = logits + bias;
-
-            // Step 4: softmax normalization over rows
-            Tensor s = Tensor::softmax_row(g);
-
-            // Step 5: output = attention weights × values
-            Tensor y = Tensor::matmul(s, v);
-            return y;
+        case Op::Transpose: {
+            const Tensor &X = node->inputs[0]->value;
+            return Tensor::transpose(X);
         }
 
-        // ============================================================
-        // Leaf node (constants or inputs)
-        // ============================================================
-        /*
-         * Op::Leaf:
-         * ----------
-         * Represents graph input nodes, constants, or parameters.
-         * These do not require recomputation since their values
-         * are provided externally or stored persistently.
-         */
-        case Op::Leaf:
-            return node->value;
+        case Op::SoftmaxRow: {
+            const Tensor &X = node->inputs[0]->value;
+            return Tensor::softmax_row(X);
+        }
+        case Op::Softplus: {
+            const Tensor &X = node->inputs[0]->value;
+            return Tensor::softplus(X);
+        }
+        // case Op::LayerNorm: {
+        //     // Assume layernorm(input) – returns same shape
+        //     const Tensor &X = node->inputs[0]->value;
+        //     return Tensor::rmsn(X);
+        // }
 
-        // ============================================================
-        // Default / fallback case
-        // ============================================================
-        /*
-         * Handles cases where an operation type is not explicitly listed.
-         * In some composite operations (like attention or layernorm),
-         * intermediate tensors are temporarily stored in `node->tape`.
-         *
-         * If `tape` is not empty, it uses the last tensor in the tape
-         * as a fallback recomputation result.
-         */
+        case Op::RMSNorm: {
+            const Tensor &X = node->inputs[0]->value;
+                return Tensor::rmsn(X);
+        }
+
+        case Op::Attention:
+        case Op::AlibiAttention: {
+            // Generic attention implementation that works on 2D flattened (B*S, E)
+            // Expected inputs: (Q_src, K_src, V_src, Wout)
+            // If your Attention op expects other shapes, adjust accordingly.
+            const Tensor &Q = node->inputs[0]->value;
+            const Tensor &K = node->inputs[1]->value;
+            const Tensor &V = node->inputs[2]->value;
+            const Tensor &Wo = node->inputs[3]->value; // output projection, optional
+
+            // Basic checks
+            if (Q.size() == 0 || K.size() == 0 || V.size() == 0)
+                throw std::runtime_error("forward_eval_node::Attention: Q/K/V empty");
+
+            // scores = Q @ K^T
+            Tensor Kt = Tensor::transpose(K);
+            if (Q.cols() != Kt.rows()) {
+                std::ostringstream ss;
+                ss << "attention: inner dim mismatch Q("<<Q.rows()<<"x"<<Q.cols()
+                   <<") K^T("<<Kt.rows()<<"x"<<Kt.cols()<<") for node@"<<node.get();
+                throw std::runtime_error(ss.str());
+            }
+            Tensor logits = Tensor::matmul(Q, Kt);
+
+            // scale by sqrt(d_k) if desired (simple heuristic)
+            float scale = 1.0f / std::sqrt(float(std::max(1, K.cols())));
+            if (scale != 1.0f) logits = logits * scale;
+
+            // If ALIBI variant, add bias (use Tensor::alibi if available)
+            if (node->op == Op::AlibiAttention) {
+                Tensor bias = Tensor::alibi(logits.rows(), logits.cols(), /*m=*/128);
+                logits = logits + bias;
+            }
+
+            Tensor weights = Tensor::softmax_row(logits);
+            Tensor context = Tensor::matmul(weights, V);
+
+            if (Wo.size() != 0) {
+                if (context.cols() != Wo.rows()) {
+                    std::ostringstream ss;
+                    ss << "attention: Wo shape mismatch context.cols="<<context.cols()
+                       << " Wo.rows="<<Wo.rows()<<" for node@"<<node.get();
+                    throw std::runtime_error(ss.str());
+                }
+                return Tensor::matmul(context, Wo);
+            }
+            return context;
+        }
+
+        case Op::GELU: {
+            const Tensor &X = node->inputs[0]->value;
+            return Tensor::gelu_tanh(X);
+        }
+        case Op::LeakyRelu: {
+            const Tensor &X = node->inputs[0]->value;
+            float alpha = 0.01f; // default slope
+            if (node->inputs.size() > 1) {
+                const Tensor &AlphaTensor = node->inputs[1]->value;
+                if (AlphaTensor.numel() != 1) {
+                    std::ostringstream ss;
+                    ss << "leaky_relu: alpha must be scalar for node@" << node.get()
+                       << " name=\"" << dbg_name << "\"";
+                    throw std::runtime_error(ss.str());
+                }
+                alpha = AlphaTensor.data()[0];
+            }
+            return Tensor::leaky_relu(X, alpha);
+        }
+        
+        // Fallback: if node has a tape with a saved forward result, return it
         default:
-            if (!node->tape.empty()) {
+            if (!node->tape.empty() && node->tape.back()) {
                 return *(node->tape.back());
             }
-            throw std::runtime_error("forward_eval_node: unsupported op for recompute");
+            // Unknown op: fail explicitly (useful message)
+            std::ostringstream ss;
+            ss << "forward_eval_node: unsupported op for recompute (op=" << static_cast<int>(node->op)
+               << ") node@" << node.get() << " name=\"" << dbg_name << "\"";
+            throw std::runtime_error(ss.str());
+        } // switch
+    } catch (const std::exception &e) {
+        std::ostringstream ss;
+        ss << "[forward_eval_node] exception for node@" << node.get()
+           << " name=\"" << dbg_name << "\": " << e.what();
+        std::cerr << ss.str() << std::endl;
+        throw; // rethrow to let caller handle
     }
 }
 
-// -----------------------------------------------------------------------------
-// Adapter overload for raw pointer nodes
-// -----------------------------------------------------------------------------
-
-/*
- * forward_eval_node(Node*):
- * --------------------------
- *  Provides a lightweight wrapper around the main version of
- *  `forward_eval_node()` that takes a raw Node pointer instead of
- *  a shared_ptr.
- *
- *  This is used for internal integration with systems like
- *  checkpointing, which store and traverse raw Node* references.
- *
- *  Implementation detail:
- *      - Wraps the raw Node* in a non-owning `shared_ptr<Node>`.
- *      - Uses a custom deleter `[](Node*){}` to prevent freeing.
- */
+// convenience wrapper accepting Node*
 Tensor forward_eval_node(Node* node) {
-    // Non-owning shared_ptr wrapper — prevents deletion of node
+    // wrap non-owning pointer to avoid changing ownership / lifetime
     return forward_eval_node(std::shared_ptr<Node>(node, [](Node*){}));
 }
 

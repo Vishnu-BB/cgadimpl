@@ -36,6 +36,20 @@ void backward(const Value& root, const Tensor* grad_seed){
             throw std::runtime_error("autodiff: failed to recompute checkpointed node during backward");
         }
         }
+    for (auto &p_sp : n->inputs) {
+    if (!p_sp) continue;
+    if (p_sp->value.numel() == 0) {
+                if (p_sp->is_checkpoint) {
+                    if (!ag::checkpoint_impl::recompute_subgraph(p_sp)) {
+                        throw std::runtime_error("backward: failed to recompute parent");
+                    }
+                } else {
+                    std::cerr << "[backward] WARNING: parent value empty but not checkpointed: "
+                            << (p_sp->debug_name ? p_sp->debug_name : "(null)") << "\n";
+                }
+            }
+        }
+
         VjpFn fn = vjp_lookup(n->op);
         if (fn) fn(n, gy); // handler accumulates into parents
         

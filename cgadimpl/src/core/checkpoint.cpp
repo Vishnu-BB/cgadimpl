@@ -121,8 +121,8 @@ void mark_node_checkpoint(const NodePtr &node, const CheckpointOptions &opts) {
             node->saved_inputs.emplace_back(Value());   // Empty placeholder
     }
 
-    std::cerr << "[checkpoint] saved_inputs_count=" << node->saved_inputs.size()
-              << " for node=" << node.get() << "\n";
+    // std::cerr << "[checkpoint] saved_inputs_count=" << node->saved_inputs.size()
+    //           << " for node=" << node.get() << "\n";
 
     /*
      *  Optionally capture the RNG state if requested in options.
@@ -155,117 +155,116 @@ void mark_node_checkpoint(const NodePtr &node, const CheckpointOptions &opts) {
  *  This is typically invoked automatically during backward propagation
  *  when a checkpointed node’s value is required but has been freed.
  */
-bool recompute_subgraph(const std::shared_ptr<Node>& node) {
-    if (!node) return false;
-    if (!node->is_checkpoint) return false;
 
-    // Sanity check — make sure checkpoint data exists
-    if (node->saved_inputs.empty()) {
-        std::cerr << "[checkpoint] no saved inputs for recompute -- node=" << node.get()
-                  << " name=\"" << (node->debug_name ? node->debug_name : "(null)") << "\""
-                  << " inputs=" << node->inputs.size()
-                  << " is_checkpoint=" << node->is_checkpoint << "\n";
+bool recompute_subgraph(const std::shared_ptr<Node>& node) {
+    using std::endl;
+    if (!node) return false;
+    if (!node->is_checkpoint) {
+        std::cerr << "[checkpoint] recompute_subgraph called on non-checkpoint node="
+                  << node.get() << " name=\"" << (node->debug_name?node->debug_name:"(null)") << "\"\n";
         return false;
     }
 
-    // Restore RNG state if previously saved
-    if (node->has_saved_rng) {
-        restore_rng_state(node->saved_rng_blob);
+    // Basic sanity: we must have saved_inputs or snapshots for this checkpoint
+    if (node->saved_inputs.empty() && node->saved_input_tensors.empty()) {
+        std::cerr << "[checkpoint] no saved inputs nor snapshots for recompute -- node="
+                  << node.get() << " name=\"" << (node->debug_name?node->debug_name:"(null)") << "\"\n";
+        return false;
     }
 
-    /*
-     *  Step 1: Restore or recompute all parent inputs
-     *  ------------------------------------------------
-     *  For each saved input:
-     *      - If `saved_inputs[i]` holds a node with tensor value, restore it.
-     *      - Otherwise, if the parent's value is missing, attempt recursive recomputation.
-     */
-    // for (size_t i = 0; i < node->saved_inputs.size() && i < node->inputs.size(); ++i) {
-    //     const Value &sv = node->saved_inputs[i];
-    //     auto parent = node->inputs[i];
-    //     if (!parent) continue;
+    // Restore RNG if necessary
+    if (node->has_saved_rng) restore_rng_state(node->saved_rng_blob);
 
-    //     if (sv.node) {
-    //         // Directly restore parent tensor from saved Value
-    //         parent->value = sv.node->value;
-    //     } else {
-    //         // If we don't have a saved value, but parent value is missing, try to recompute
-    //         if (parent->value.size() == 0) {
-    //             if (parent->is_checkpoint) {
-    //                 // Recursive recomputation of parent checkpoint
-    //                 if (!recompute_subgraph(parent)) {
-    //                     std::cerr << "[checkpoint] failed to recompute parent\n";
-    //                     return false;
-    //                 }
-    //             } else {
-    //                 std::cerr << "[checkpoint] missing parent value and parent isn't checkpointed\n";
-    //                 return false;
-    //             }
-    //         }
-    //     }
-    // }
-std::cerr << "[recompute] node=" << node.get()
-          << " name=" << node->debug_name
-          << " inputs=" << node->inputs.size() << "\n";
-for (size_t i = 0; i < node->saved_inputs.size() && i < node->inputs.size(); ++i) {
-    const Value &sv = node->saved_inputs[i];
-    auto parent = node->inputs[i];
-    if (!parent) continue;
-    auto s = parent->value.shape();
-    std::cerr << "   input[" << i << "] "
-              << (parent->is_checkpoint ? "[CKPT]" : "[FREE]")
-              << " shape=" << s.first << "x" << s.second
-              << " numel=" << parent->value.numel() << "\n";
-    // 1) If we stored a snapshot tensor, restore it
-    if (i < node->saved_input_tensors.size() && node->saved_input_tensors[i].size() != 0) {
-        parent->value = node->saved_input_tensors[i];
-        continue;
-    }
+    // std::cerr << "[recompute] START node=" << node.get()
+    //           << " name=\"" << (node->debug_name?node->debug_name:"(null)") << "\""
+    //           << " op=" << static_cast<int>(node->op)
+    //           << " inputs=" << node->inputs.size()
+    //           << " saved_inputs=" << node->saved_inputs.size()
+    //           << " saved_snapshots=" << node->saved_input_tensors.size() << "\n";
 
-    // 2) Otherwise, if the saved Value points to a node whose value exists, copy that
-    if (sv.node && sv.node->value.size() != 0) {
-        parent->value = sv.node->value;
-        continue;
-    }
+    // 1) Restore each parent value from snapshot or saved Value (sv)
+    for (size_t i = 0; i < node->inputs.size(); ++i) {
+        auto parent = node->inputs[i];
+        if (!parent) {
+            std::cerr << "   [recompute] parent[" << i << "] is null\n";
+            continue;
+        }
 
-    // 3) Else, if parent is a checkpoint, recurse; otherwise fail
-    if (parent->value.size() == 0) {
-        if (parent->is_checkpoint) {
-            if (!recompute_subgraph(parent)) {
-                std::cerr << "[checkpoint] failed to recompute parent\n";
+        // If we have a raw snapshot tensor for this input, restore it
+        if (i < node->saved_input_tensors.size() && node->saved_input_tensors[i].numel() != 0) {
+            parent->value = node->saved_input_tensors[i];
+            std::cerr << "   [recompute] restored parent["<<i<<"] from snapshot (numel="<<parent->value.numel()<<")\n";
+            continue;
+        }
+
+        // If saved_inputs entry points to a node whose value exists, copy it.
+        if (i < node->saved_inputs.size()) {
+            const Value &sv = node->saved_inputs[i];
+            if (sv.node && sv.node->value.numel() != 0) {
+                parent->value = sv.node->value;
+                // std::cerr << "   [recompute] copied parent["<<i<<"] value from saved node "<< sv.node.get() <<"\n";
+                continue;
+            }
+        }
+
+        // If parent value is missing but parent is checkpointed, recursively recompute it
+        if (parent->value.numel() == 0) {
+            if (parent->is_checkpoint) {
+                // std::cerr << "   [recompute] parent["<<i<<"] is checkpoint, recursing into parent="<<parent.get()<<"\n";
+                if (!recompute_subgraph(parent)) {
+                    std::cerr << "[checkpoint] failed to recompute parent (idx="<<i<<") for node="<<node.get()<<"\n";
+                    return false;
+                }
+                // after recursion, parent->value should be filled
+                if (parent->value.numel() == 0) {
+                    std::cerr << "[checkpoint] parent recompute returned but parent->value still empty parent="<<parent.get()<<"\n";
+                    return false;
+                }
+            } else {
+                std::cerr << "[checkpoint] missing parent value and parent isn't checkpointed: parent="<<parent.get()
+                          << " name=\"" << (parent->debug_name?parent->debug_name:"(null)") << "\"\n";
                 return false;
             }
-        } else {
-            std::cerr << "[checkpoint] missing parent value and parent isn't checkpointed\n";
+        }
+
+        // At this point parent->value should be non-empty
+        // std::cerr << "   [recompute] parent["<<i<<"] final shape=" << parent->value.rows() << "x" << parent->value.cols()
+        //           << " numel=" << parent->value.numel()
+        //           << " checkpoint=" << parent->is_checkpoint << "\n";
+    } // for inputs
+
+    // Double-check: all inputs must now have values
+    for (auto &p_sp : node->inputs) {
+        if (!p_sp) continue;
+        if (p_sp->value.numel() == 0) {
+            // std::cerr << "[checkpoint] ERROR: input still empty before forward_eval_node for node="<<node.get()
+            //           << " name=\"" << (node->debug_name?node->debug_name:"(null)") << "\""
+            //           << " input_node="<<p_sp.get() << " name=\"" << (p_sp->debug_name? p_sp->debug_name : "(null)") << "\"\n";
             return false;
         }
     }
-    for (auto &p : node->inputs) {
-    if (p && p->value.size() == 0) {
-        std::cerr << "[ERROR] recompute_subgraph: parent@" << p.get()
-                  << " (" << (p->debug_name ? p->debug_name : "(null)")
-                  << ") has empty tensor before recompute of node@" << node.get() << "\n";
-    }
-}
 
-}
-    /*
-     *  Step 2: Run the forward operation for this node.
-     *  -------------------------------------------------
-     *  Using the restored input tensors, we now recompute
-     *  the output tensor by calling the node’s operator implementation.
-     */
+    // 2) Run forward op to compute node->value
     try {
-        Tensor out = forward_eval_node(node.get());   // Re-run forward computation
-        node->value = out;                            // Save result
-        ag::inplace::on_recomputed(node.get());       // Optional callback (for debugging/versioning)
+        Tensor out = forward_eval_node(node.get());   // run forward evaluator
+        node->value = out;
+        // std::cerr << "[recompute] SUCCESS for node=" << node.get()
+        //           << " name=\"" << (node->debug_name?node->debug_name:"(null)") << "\""
+        //           << " out.shape=" << node->value.rows() << "x" << node->value.cols()
+        //           << " numel=" << node->value.numel() << "\n";
+
+        // Notify in-place trackers / bookkeeping that node was recomputed
+        ag::inplace::on_recomputed(node.get());
     } catch (const std::exception &e) {
-        std::cerr << "[checkpoint] recompute exception: " << e.what() << "\n";
+        std::cerr << "[checkpoint] recompute exception: " << e.what()
+                  << " -- node=" << node.get()
+                  << " name=\"" << (node->debug_name?node->debug_name:"(null)") << "\"\n";
         return false;
     }
 
     return true;
 }
+
 void evict_non_checkpoint_values(const Value &root) {
     
     if (!root.node) return;
