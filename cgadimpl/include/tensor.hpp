@@ -98,7 +98,7 @@ static Tensor sigmoid(const Tensor& x);
 static Tensor softplus(const Tensor& x);
 static Tensor gelu_tanh(const Tensor& x); // tanh approx
 static Tensor leaky_relu(const Tensor& x, float alpha);
-
+static Tensor rmsn(const Tensor& Z);
 
 // binary elementwise division (broadcasting)
 friend Tensor operator/(const Tensor& a, const Tensor& b);

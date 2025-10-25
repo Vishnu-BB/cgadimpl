@@ -195,7 +195,11 @@ Tensor e = exp(Z - M); // broadcast
 Tensor s = row_sum(e); // [R,1]
 return e / s; // broadcast divide
 }
-
+Tensor Tensor::rmsn(const Tensor& Z){
+Tensor z = Tensor::row_sum(Z*Z) * (1.f/Z.cols());
+Tensor q = Tensor::sqrt(Z + 1e-8f);
+Tensor y = Z / q;
+}
 // used for cross-entropy with logits
 Tensor Tensor::logsumexp_row(const Tensor& Z){
     Tensor M = row_max(Z);
